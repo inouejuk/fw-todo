@@ -93,7 +93,8 @@ public class HomeController {
     }
 
     @PostMapping("/todos/{id}")
-    public String updateTodo(@PathVariable("id") Long id, @ModelAttribute("todo") Todo todo, RedirectAttributes redirectAttributes) {
+    public String updateTodo(@PathVariable("id") Long id, @ModelAttribute("todo") Todo todo,
+            RedirectAttributes redirectAttributes) {
         todo.setId(id);
         todoService.update(todo);
         redirectAttributes.addFlashAttribute("message", "保存しました");
