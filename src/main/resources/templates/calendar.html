@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ja" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>カレンダー</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+    <div class="container">
+        <p id="holiday-error" role="status" hidden>祝日を取れませんでした</p>
+        <h1 id="calendar-title" class="page-title" th:text="${year + '年' + month + '月'}">カレンダー</h1>
+        <nav class="calendar-nav" aria-label="カレンダーの操作">
+            <div class="calendar-nav-group">
+                <a class="link" th:href="@{/calendar(year=${previousMonth.year},month=${previousMonth.monthValue})}">前の月</a>
+                <a class="link" th:href="@{/calendar(year=${nextMonth.year},month=${nextMonth.monthValue})}">次の月</a>
+            </div>
+            <div class="calendar-nav-group calendar-nav-actions">
+                <a class="link" th:href="@{/todos}">表で見る</a>
+                <a class="btn" th:href="@{/todos/new}">新規登録</a>
+            </div>
+        </nav>
+        <table class="calendar-table" aria-labelledby="calendar-title" th:attr="data-from=${firstDay},data-to=${lastDay}">
+            <thead>
+                <tr>
+                    <th scope="col">日</th>
+                    <th scope="col">月</th>
+                    <th scope="col">火</th>
+                    <th scope="col">水</th>
+                    <th scope="col">木</th>
+                    <th scope="col">金</th>
+                    <th scope="col">土</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr th:each="week : ${weeks}">
+                    <td th:each="day : ${week}" th:attr="data-date=${day}">
+                        <span th:if="${day != null}" th:text="${day.dayOfMonth}"></span>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <script>
+        const table = document.querySelector('table[data-from][data-to]');
+        const params = new URLSearchParams({
+            from: table.dataset.from,
+            to: table.dataset.to
+        });
+        const cells = new Map();
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        table.querySelectorAll('td[data-date]').forEach(cell => {
+            cells.set(cell.dataset.date, cell);
+            const day = new Date(`${cell.dataset.date}T00:00:00`).getDay();
+            if (day === 6) {
+                cell.style.backgroundColor = '#dbeafe';
+            } else if (day === 0) {
+                cell.style.backgroundColor = '#ffedd5';
+            }
+            if (cell.dataset.date === today) {
+                cell.style.backgroundColor = '#fff8dc';
+            }
+        });
+
+        async function loadTodos() {
+            try {
+                const res = await fetch(`/api/todos?${params}`);
+                if (!res.ok) {
+                    throw new Error('やることを取得できませんでした。');
+                }
+                const todos = await res.json();
+                const todosByDate = new Map();
+                for (const todo of todos) {
+                    if (!cells.has(todo.dueDate)) {
+                        continue;
+                    }
+                    if (!todosByDate.has(todo.dueDate)) {
+                        todosByDate.set(todo.dueDate, []);
+                    }
+                    todosByDate.get(todo.dueDate).push(todo);
+                }
+                const maxVisible = 2;
+                for (const [date, dayTodos] of todosByDate) {
+                    const cell = cells.get(date);
+                    for (const todo of dayTodos.slice(0, maxVisible)) {
+                        const title = document.createElement('a');
+                        title.className = 'link calendar-todo';
+                        title.href = `/todos/${todo.id}/edit`;
+                        title.textContent = todo.title;
+                        title.style.color = todo.dueDate < today && !todo.completed
+                                ? '#b91c1c' : '#334155';
+                        cell.appendChild(title);
+                    }
+                    if (dayTodos.length > maxVisible) {
+                        const more = document.createElement('div');
+                        more.textContent = `ほか ${dayTodos.length - maxVisible}件`;
+                        more.style.color = '#334155';
+                        cell.appendChild(more);
+                    }
+                }
+            } catch (error) {
+                console.error('やることの読み込みに失敗しました。', error);
+            }
+        }
+
+        async function loadHolidays() {
+            const message = document.getElementById('holiday-error');
+            try {
+                const res = await fetch(`/api/holidays?${params}`);
+                message.hidden = !res.headers.has('X-Holidays-Unavailable');
+                if (!res.ok) {
+                    throw new Error('祝日を取得できませんでした。');
+                }
+                const holidays = await res.json();
+                for (const [date, name] of Object.entries(holidays)) {
+                    const cell = cells.get(date);
+                    if (cell) {
+                        if (date !== today) {
+                            cell.style.backgroundColor = '#fce7f3';
+                        }
+                        cell.title = name;
+                    }
+                }
+            } catch (error) {
+                message.hidden = false;
+                console.error('祝日の読み込みに失敗しました。', error);
+            }
+        }
+
+        loadTodos();
+        loadHolidays();
+    </script>
+</body>
+</html>
